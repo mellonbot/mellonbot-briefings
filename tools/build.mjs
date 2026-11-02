@@ -62,6 +62,7 @@ const PLAYERS = {
   simple: {
     detect: (html) => /<div id="stage">/.test(html) && /<section class="slide"/.test(html),
     slide: "slide",
+    base: "players/simple.css", // the CSS reset these decks are authored against but don't ship
     patches: [
       {
         why: "fit slides above the theater bar: scale from innerHeight minus --theater-bar",
@@ -128,6 +129,7 @@ function buildFonts() {
 }
 
 // ---- one deck --------------------------------------------------------------------------
+const baseCss = {}; // player -> hashed URL of its base stylesheet
 function buildDeck(slug, fontsCss, theater) {
   let html = readFileSync(join(ROOT, "decks", `${slug}.html`), "utf8");
   const title = unesc((html.match(/<title>([^<]*)<\/title>/) || fail(`${slug}: no <title>`))[1].trim());
@@ -181,7 +183,10 @@ function buildDeck(slug, fontsCss, theater) {
   const attrCss = [...classes].sort(([a], [b]) => (a < b ? -1 : 1)).map(([c, d]) => `.${c}{${d}}`).join("\n");
   const cssUrl = hashed(slug, "deck", "css", `@layer deck{\n${deckCss}\n}\n${attrCss}\n`);
 
-  html = html.replace(/<\/title>/, `</title>\n${ICON_TAGS}\n<link rel="stylesheet" href="${fontsCss}">\n<link rel="stylesheet" href="${cssUrl}">\n<link rel="stylesheet" href="${theater.css}">`);
+  const base = PLAYERS[player].base;
+  if (base && !baseCss[player]) baseCss[player] = hashed("assets", `player-${player}`, "css", readFileSync(join(ROOT, "site", base)));
+  const baseLink = base ? `<link rel="stylesheet" href="${baseCss[player]}">\n` : "";
+  html = html.replace(/<\/title>/, `</title>\n${ICON_TAGS}\n<link rel="stylesheet" href="${fontsCss}">\n${baseLink}<link rel="stylesheet" href="${cssUrl}">\n<link rel="stylesheet" href="${theater.css}">`);
 
   // Unmask scripts: data blocks stay inline (never executed, so CSP doesn't apply); code moves out.
   html = html.replace(/\u0000S(\d+)\u0000/g, (_, i) => {

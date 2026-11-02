@@ -46,6 +46,11 @@ test("every deck carries the theater and its player's patches", () => {
     assert.match(body, /--theater-bar/, `${js}: scale patch`);
     if (player === "motion") assert.doesNotMatch(body, /max-aspect-ratio: 1\/1/, `${js}: stage patch`);
     if (player === "simple") assert.match(body, /window\.__deckShow=show;/, `${js}: show() exposed`);
+    if (player === "simple") {
+      const base = html.match(/<link rel="stylesheet" href="(\/assets\/player-simple\.[0-9a-f]{10}\.css)">\n<link rel="stylesheet" href="\/[^"]+\/deck\./);
+      assert.ok(base, `${f}: simple-player base stylesheet must load right before the deck's CSS`);
+      assert.match(readFileSync(join(OUT, base[1]), "utf8"), /@layer base, deck;/, `${f}: base must be layered below deck`);
+    }
   }
 });
 

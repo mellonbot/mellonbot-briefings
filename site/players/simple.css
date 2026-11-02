@@ -1,0 +1,20 @@
+/* Base styles for "simple" player decks (#stage > section.slide).
+ *
+ * These decks are authored against a CSS reset they don't ship: 257 <p> and 16 <h2> with no
+ * margin of their own, padded boxes sized as if border-box. Without it, browser-default margins
+ * pushed 13 of 17 slides of the scope deck 130–577px past the bottom of the slide.
+ *
+ * Loaded in @layer base, declared before the deck's @layer deck, so every rule the deck states
+ * (and every converted style="" class, which is unlayered) still wins over these.
+ */
+@layer base, deck;
+@layer base {
+  *, ::before, ::after { box-sizing: border-box; }
+  h1, h2, h3, h4, h5, h6, p, ul, ol, dl, dd, figure, blockquote, pre, table { margin: 0; }
+  ul, ol { padding: 0; list-style: none; }
+  img, svg { display: block; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; }
+  /* Tables shipped with no cell padding: right-aligned figures ran into the next column. */
+  th, td { padding: 10px 20px; vertical-align: middle; }
+  th { padding-top: 12px; padding-bottom: 12px; }
+}
