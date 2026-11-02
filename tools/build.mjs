@@ -143,7 +143,7 @@ function buildDeck(slug, fontsCss, theater) {
   const attrCss = [...classes].sort(([a], [b]) => (a < b ? -1 : 1)).map(([c, d]) => `.${c}{${d}}`).join("\n");
   const cssUrl = hashed(slug, "deck", "css", `@layer deck{\n${deckCss}\n}\n${attrCss}\n`);
 
-  html = html.replace(/<\/title>/, `</title>\n<link rel="stylesheet" href="${fontsCss}">\n<link rel="stylesheet" href="${cssUrl}">\n<link rel="stylesheet" href="${theater.css}">`);
+  html = html.replace(/<\/title>/, `</title>\n${ICON_TAGS}\n<link rel="stylesheet" href="${fontsCss}">\n<link rel="stylesheet" href="${cssUrl}">\n<link rel="stylesheet" href="${theater.css}">`);
 
   // Unmask scripts: data blocks stay inline (never executed, so CSP doesn't apply); code moves out.
   html = html.replace(/\u0000S(\d+)\u0000/g, (_, i) => {
@@ -175,11 +175,15 @@ const theater = {
   css: hashed("assets", "theater", "css", readFileSync(join(ROOT, "site", "theater.css"))),
   js: hashed("assets", "theater", "js", readFileSync(join(ROOT, "site", "theater.js"))),
 };
+// Favicon: the root's circuit-board M, pulse colour set by tools/pulse.mjs. Content-hashed, so
+// it is cached immutably and a changed icon is a new URL (browsers otherwise hold icons for days).
+const icon = hashed("assets", "favicon", "svg", readFileSync(join(ROOT, "site", "favicon.svg")));
+const ICON_TAGS = `<link rel="icon" href="${icon}" type="image/svg+xml">\n<link rel="apple-touch-icon" href="https://melltron.build/apple-touch-icon.png">`;
 const decks = readdirSync(join(ROOT, "decks")).filter((f) => f.endsWith(".html")).sort().map((f) => buildDeck(f.slice(0, -5), fontsCss, theater));
 
 const appCss = hashed("assets", "app", "css", readFileSync(join(ROOT, "site", "app.css")));
 for (const page of ["index.html", "404.html"]) {
   const list = decks.map((d) => `<li><a href="/${d.slug}/">${esc(d.title)}</a> <span>${d.slides} slides</span></li>`).join("\n");
-  emit(page, readFileSync(join(ROOT, "site", page), "utf8").replaceAll("{{css}}", appCss).replaceAll("{{decks}}", list));
+  emit(page, readFileSync(join(ROOT, "site", page), "utf8").replaceAll("{{css}}", appCss).replaceAll("{{decks}}", list).replaceAll("{{icon}}", ICON_TAGS));
 }
 console.log(`built ${decks.length} decks -> public/ (${decks.map((d) => `${d.slug}:${d.slides}`).join(", ")})`);
