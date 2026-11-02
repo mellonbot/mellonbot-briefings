@@ -7,7 +7,8 @@ A `*.melltron.build` lab app built from melltron-lab-template. See README.md for
 - **Edge contract.** All responses go through `finalize()` in `src/edge.js`. Don't bypass it, and don't change the security headers here without changing `melltron.build/src/worker.js` to match.
 - **Strict CSP.** No inline scripts/styles, no third-party origins, unless the CSP is edited on purpose and the reason is in the commit message.
 - **No secrets in git.** `.dev.vars` locally, `wrangler secret put` in production.
-- **Personal, not company.** No company code, data, names, or credentials.
+- **Personal, not employer.** No employer or third-party company code, data, names, or credentials. Companies the author owns (Rankine Operating Company, AC Services / acservice.systems) are fair game; their decks are published here by the author's choice.
+- **`public/` is generated** from `decks/`, `site/`, `fonts/` by `npm run build`. Never hand-edit it; commit it with its sources.
 - If `.template` exists, this is the template itself: keep the placeholders `template-app` / `Template App` intact.
 
 ## Commands

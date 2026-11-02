@@ -1,14 +1,17 @@
 {
-  "name": "lab-template-app",
+  "name": "lab-briefings",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "init": "node tools/init.mjs",
     "dev": "wrangler dev",
     "test": "node --test test/*.test.js",
-    "check": "node tools/init.mjs --verify && node --test test/*.test.js && wrangler deploy --dry-run --outdir .wrangler/dry"
+    "check": "node tools/init.mjs --verify && node tools/build.mjs && git diff --exit-code -- public/ && node --test test/*.test.js && wrangler deploy --dry-run --outdir .wrangler/dry",
+    "build": "node tools/build.mjs"
   },
   "devDependencies": {
     "wrangler": "4.156.1"

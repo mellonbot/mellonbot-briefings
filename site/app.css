@@ -6,3 +6,7 @@ header, main { max-width: 720px; margin: 0 auto; padding: 16px; }
 header a { color: var(--dim); text-decoration: none; }
 h1 { font-size: 1.6rem; margin: 1rem 0; }
 code { color: var(--dim); }
+a { color: inherit; }
+.decks { list-style: none; padding: 0; margin: 1.5rem 0; }
+.decks li { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.decks span { color: var(--dim); }

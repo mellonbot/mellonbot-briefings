@@ -1,4 +1,27 @@
-# melltron lab app template
+# Briefings — briefings.melltron.build
+
+Rankine Operating Company / AC Services decks, published full-screen on the melltron.build lab.
+Built from `melltron-lab-template`; the lifecycle and edge contract below still apply.
+
+## Decks
+
+```
+decks/<slug>.html ──tools/build.mjs──▶ public/<slug>/  ──push main──▶ Workers Builds ──▶ briefings.melltron.build/<slug>/
+ (raw export,         (CSP rewrite,       (committed)
+  source of truth)     deterministic)
+```
+
+Add or update a deck: drop the single-file HTML export at `decks/<slug>.html`, then `npm run build`, commit `decks/` and `public/` together, push. The slug is the URL. The index page lists every deck automatically.
+
+The exports carry inline scripts, inline styles, data: fonts, Google Fonts and their own meta CSP. The domain CSP allows none of that, so `tools/build.mjs` moves the same bytes into same-origin files instead of loosening the policy (header comment has the details). Verified pixel-identical to the originals on every slide of both decks, zero CSP violations.
+
+- `fonts/` vendors IBM Plex Sans / Sans Condensed / Mono (OFL) and Yellowtail (Apache-2.0), latin + latin-ext woff2, replacing Google Fonts.
+- The build fails if anything CSP would block survives; `test/decks.test.js` checks the same on `public/`.
+- `npm run check` rebuilds and fails if `public/` drifted from what's committed (Cloudflare runs no build).
+
+---
+
+# Lab app template notes
 
 Starting point for every `<name>.melltron.build` app. One repo, one Worker, one subdomain per app, so a broken experiment can't take down the root or another app.
 
@@ -40,7 +63,11 @@ Set `"status": "retired"` in `lab.json` (never delete; that renumbers every late
 src/index.js        request flow: /_health → /api/* → static assets
 src/api.js          app routes: "METHOD /path" → handler
 src/edge.js         shared edge contract: security headers + cache policy
-public/             static assets (no build step; served as-is)
+decks/              raw deck exports (source of truth)
+fonts/              vendored woff2 + licenses
+site/               index + 404 templates, app.css
+tools/build.mjs     decks/ + site/ + fonts/ -> public/
+public/             GENERATED · committed · served as-is
 test/               node --test, no Workers runtime needed
 tools/init.mjs      one-time setup
 wrangler.jsonc      Worker config, custom domain, bindings

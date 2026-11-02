@@ -1,9 +1,9 @@
 {
-  // Template App — lab app on template-app.melltron.build.
+  // Briefings — lab app on briefings.melltron.build.
   // Isolated by design: own repo, own Worker, own domain binding. Nothing in the
   // melltron.build root routes here; the root only lists it in content/lab.json.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "lab-template-app",
+  "name": "lab-briefings",
   "main": "src/index.js",
   "compatibility_date": "2026-11-01",
   "assets": {
@@ -13,7 +13,7 @@
     "html_handling": "auto-trailing-slash",
     "run_worker_first": true
   },
-  "routes": [{ "pattern": "template-app.melltron.build", "custom_domain": true }],
+  "routes": [{ "pattern": "briefings.melltron.build", "custom_domain": true }],
   // One canonical origin. Branch builds run `wrangler preview`, which needs the
   // previews block (empty is fine) and preview_urls to be reachable.
   "workers_dev": false,
