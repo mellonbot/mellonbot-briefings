@@ -19,7 +19,12 @@ The exports carry inline scripts, inline styles, data: fonts, Google Fonts and t
 
 Every deck opens in a theater: the slide fitted above a control bar with a home link, the deck title, a clickable track (one segment per slide, hover for its headline), previous/next, a slide counter, and full screen. Full screen is present mode: the bar overlays and hides after 2s idle, along with the cursor. Keys: ←/→, space, Home/End, 1–9, F. Click either half of the slide or swipe to step. `#N` deep-links a slide.
 
-The exported deck already has a one-slide player but no visible controls, and it falls back to vertical scrolling on portrait screens. `site/theater.{css,js}` drives that player through the inputs it already handles (keydown, hashchange) and reads its state from the DOM (`data-off`). Two guarded patches in `tools/build.mjs` (`PATCHES`) make it use the stage at every aspect ratio and leave room for the bar. If a future export changes the player, the build fails instead of shipping a half-working bar.
+Decks bring their own player, and the build recognises two (`PLAYERS` in `tools/build.mjs`), marking the page `<html data-player=…>`:
+
+- **motion**: single-file exports with a `#deck-motion` timeline (builds, transitions). It already has a one-slide stage but no visible controls, and falls back to scrolling on portrait screens. Patched to use the stage everywhere and to leave room for the bar.
+- **simple**: hand-built `#stage > section.slide` decks, with `.on` marking the current slide and `<aside>` holding speaker notes (shown with **N** or the Notes button). Patched to leave room for the bar and to expose `show(i)` so the track can jump. `theater.css` also repairs two bugs these exports ship with: inline `display:flex|grid` on every slide beat the player's `display:none`, so every slide rendered stacked and the last one always showed; and the 1920px stage overflowed, so phones laid the page out too wide and zoomed out.
+
+`site/theater.js` holds one small adapter per player. Each adapter drives the player through inputs it already handles and reads its state from the DOM. Every patch must match exactly once, and an unrecognised player fails the build, so a changed export can't ship a half-working bar. CSS selectors that keyed off inline styles (`[style*="display:grid"]`) are rewritten to match the classes those styles became.
 
 - `fonts/` vendors IBM Plex Sans / Sans Condensed / Mono (OFL) and Yellowtail (Apache-2.0), latin + latin-ext woff2, replacing Google Fonts.
 - The build fails if anything CSP would block survives; `test/decks.test.js` checks the same on `public/`.

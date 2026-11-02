@@ -17,9 +17,13 @@
 //                            becomes style.cssText=v (CSSOM writes are allowed by CSP).
 //   meta CSP              -> removed (it would intersect with, and block, 'self').
 //
+//   [style*="x"] selectors -> :is(.<class>, …) for every converted style that contained x, so
+//                            CSS that keyed off inline styles still matches after conversion.
+//
 // Theater (site/theater.{css,js}) is injected into every deck: a control bar around the deck's
-// own player. Two PATCHES make the player cooperate; each must match exactly once, so a
-// re-export that changes the player fails the build instead of shipping a half-working bar.
+// own player. Each known PLAYER is detected by signature and gets guarded patches; each patch
+// must match exactly once, so a re-export that changes the player fails the build instead of
+// shipping a half-working bar. Unknown player -> build fails.
 //
 // New or updated deck: drop the export at decks/<slug>.html, run `npm run build`, commit.
 
@@ -35,23 +39,47 @@ const unesc = (s) =>
   s.replace(/&(quot|amp|lt|gt|apos|#39|#x27);/g, (_, e) => ({ quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", "#39": "'", "#x27": "'" })[e]);
 const fail = (msg) => { console.error(`build: ${msg}`); process.exit(1); };
 
-const PATCHES = [
-  {
-    why: "use the one-slide stage on every aspect ratio (export falls back to scrolling in portrait)",
-    re: /window\.matchMedia\("\(max-aspect-ratio: 1\/1\)"\)/g,
-    to: () => "null",
+const BAR = (el) => `(parseFloat(getComputedStyle(${el}).getPropertyValue("--theater-bar"))||0)`;
+const PLAYERS = {
+  // Single-file exports with a #deck-motion timeline (builds, transitions, hash jumps).
+  motion: {
+    detect: (html) => /<script type="application\/json" id="deck-motion">/.test(html),
+    slide: "deck-slide",
+    patches: [
+      {
+        why: "use the one-slide stage on every aspect ratio (export falls back to scrolling in portrait)",
+        re: /window\.matchMedia\("\(max-aspect-ratio: 1\/1\)"\)/g,
+        to: () => "null",
+      },
+      {
+        why: "fit slides above the theater bar: scale from viewport height minus --theater-bar",
+        re: /Math\.min\((\w+)\.clientWidth\/(\w+)\.w,\1\.clientHeight\/\2\.h\)/g,
+        to: (_, n, e) => `Math.min(${n}.clientWidth/${e}.w,(${n}.clientHeight-${BAR(n)})/${e}.h)`,
+      },
+    ],
   },
-  {
-    why: "fit slides above the theater bar: scale from viewport height minus --theater-bar",
-    re: /Math\.min\((\w+)\.clientWidth\/(\w+)\.w,\1\.clientHeight\/\2\.h\)/g,
-    to: (_, n, e) =>
-      `Math.min(${n}.clientWidth/${e}.w,(${n}.clientHeight-(parseFloat(getComputedStyle(${n}).getPropertyValue("--theater-bar"))||0))/${e}.h)`,
+  // Hand-built decks: #stage > section.slide, .on marks the current slide, <aside> = notes.
+  simple: {
+    detect: (html) => /<div id="stage">/.test(html) && /<section class="slide"/.test(html),
+    slide: "slide",
+    patches: [
+      {
+        why: "fit slides above the theater bar: scale from innerHeight minus --theater-bar",
+        re: /Math\.min\(innerWidth\/(\d+),innerHeight\/(\d+)\)/g,
+        to: (_, w, h) => `Math.min(innerWidth/${w},(innerHeight-${BAR("document.documentElement")})/${h})`,
+      },
+      {
+        why: "expose show(i) so the theater's slide track can jump (player has no hash listener)",
+        re: /\bfit\(\);\s*show\(/g,
+        to: () => "window.__deckShow=show;fit();show(",
+      },
+    ],
   },
-];
-function patchPlayer(slug, js) {
-  for (const p of PATCHES) {
+};
+function patchPlayer(slug, player, js) {
+  for (const p of PLAYERS[player].patches) {
     const hits = js.match(p.re)?.length ?? 0;
-    if (hits !== 1) fail(`${slug}: player patch matched ${hits}x (want 1): ${p.why}`);
+    if (hits !== 1) fail(`${slug}: ${player} player patch matched ${hits}x (want 1): ${p.why}`);
     js = js.replace(p.re, p.to);
   }
   return js;
@@ -103,6 +131,9 @@ function buildFonts() {
 function buildDeck(slug, fontsCss, theater) {
   let html = readFileSync(join(ROOT, "decks", `${slug}.html`), "utf8");
   const title = unesc((html.match(/<title>([^<]*)<\/title>/) || fail(`${slug}: no <title>`))[1].trim());
+  const players = Object.keys(PLAYERS).filter((k) => PLAYERS[k].detect(html));
+  if (players.length !== 1) fail(`${slug}: player not recognised (matched: ${players.join(", ") || "none"})`);
+  const player = players[0];
 
   // Mask scripts so tag rewriting below can't touch their text.
   const scripts = [];
@@ -140,6 +171,13 @@ function buildDeck(slug, fontsCss, theater) {
     }
     return `<${name}${a}${selfClose}>`;
   });
+  // CSS that selected on inline styles ([style*="x"]) must now select the classes they became.
+  deckCss = deckCss.replace(/\[style\s*([*^$~|]?=)\s*(["'])(.*?)\2\s*\]/g, (_, op, _q, needle) => {
+    if (op !== "*=") fail(`${slug}: [style${op}…] selector not supported, only [style*=…]`);
+    const hits = [...classes].filter(([, d]) => d.includes(needle)).map(([c]) => `.${c}`).sort();
+    return hits.length ? `:is(${hits.join(",")})` : ":not(*)";
+  });
+  if (/\[style\b/.test(deckCss)) fail(`${slug}: unconverted [style] selector`);
   const attrCss = [...classes].sort(([a], [b]) => (a < b ? -1 : 1)).map(([c, d]) => `.${c}{${d}}`).join("\n");
   const cssUrl = hashed(slug, "deck", "css", `@layer deck{\n${deckCss}\n}\n${attrCss}\n`);
 
@@ -150,7 +188,7 @@ function buildDeck(slug, fontsCss, theater) {
     const { attrs, body } = scripts[+i];
     if (/type="application\/(ld\+)?json"/.test(attrs)) return `<script${attrs}>${body}</script>`;
     if (/\ssrc=/.test(attrs)) fail(`${slug}: external <script src> not supported`);
-    const js = patchPlayer(slug, body.replace(/(\w+)\.setAttribute\("style",/g, "$1.style.cssText=("));
+    const js = patchPlayer(slug, player, body.replace(/(\w+)\.setAttribute\("style",/g, "$1.style.cssText=("));
     return `<script src="${hashed(slug, "deck", "js", js)}"></script>`;
   });
 
@@ -164,8 +202,11 @@ function buildDeck(slug, fontsCss, theater) {
 
   if (!/<\/body>/.test(html)) fail(`${slug}: no </body> to attach the theater to`);
   html = html.replace(/<\/body>/, `<script src="${theater.js}"></script>\n</body>`);
+  if (!/^(<!doctype html>\s*)?<html\b/i.test(html)) fail(`${slug}: no <html> tag to mark the player on`);
+  html = html.replace(/<html\b/i, `<html data-player="${player}"`);
   emit(`${slug}/index.html`, html);
-  return { slug, title, slides: (html.match(/class="[^"]*\bdeck-slide\b/g) || []).length };
+  const slideRe = new RegExp(`class="(?:[^"]*\\s)?${PLAYERS[player].slide}(?:\\s[^"]*)?"`, "g");
+  return { slug, title, slides: (html.match(slideRe) || []).length };
 }
 
 // ---- site ------------------------------------------------------------------------------

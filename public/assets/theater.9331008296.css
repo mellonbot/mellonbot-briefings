@@ -13,6 +13,21 @@
 html.theater.deck-stage main { bottom: var(--theater-bar); }
 html.theater .deck-pager { display: none; }   /* the bar's counter replaces the flashing pill */
 
+/* Simple player (#stage > .slide.on). */
+@media screen {
+  /* Repair: exports put display:flex|grid inline on every slide, which beat the player's
+     .slide{display:none}, so all slides rendered stacked and the last one always showed.
+     Hide every slide that isn't .on, whatever its own display is. */
+  html[data-player="simple"] #stage > .slide:not(.on) { display: none !important; }
+}
+/* Repair: the 1920px stage (absolute, left:50%) spilled past the viewport, so phones laid the page
+   out ~1.75x too wide and zoomed out. Fixed positioning doesn't count toward page width. */
+html[data-player="simple"] #stage { position: fixed; }
+html.theater[data-player="simple"] #stage { top: calc(50% - var(--theater-bar) / 2); }
+html.theater[data-player="simple"] #bar,
+html.theater[data-player="simple"] #count { display: none; }   /* replaced by the theater bar */
+html.theater[data-player="simple"] #notes { bottom: var(--theater-bar); z-index: 9; }
+
 .th-bar {
   position: fixed; z-index: 10; left: 0; right: 0; bottom: 0;
   height: 56px; box-sizing: border-box; padding: 0 12px;
@@ -21,6 +36,7 @@ html.theater .deck-pager { display: none; }   /* the bar's counter replaces the 
   font: 500 13px/1 "IBM Plex Sans", system-ui, sans-serif;
   transition: opacity 0.25s, transform 0.25s;
   user-select: none; -webkit-user-select: none;
+  overflow: hidden; /* never let the bar widen the layout viewport (mobile would zoom out) */
 }
 .th-present .th-bar { background: rgba(10, 13, 16, 0.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .th-present.th-idle .th-bar { opacity: 0; transform: translateY(8px); pointer-events: none; }
@@ -53,6 +69,8 @@ html.theater .deck-pager { display: none; }   /* the bar's counter replaces the 
 .th-btn:focus-visible, .th-seg:focus-visible, .th-home:focus-visible { outline: 2px solid var(--th-accent); outline-offset: 2px; }
 .th-btn:disabled { color: var(--th-dim); opacity: 0.4; cursor: default; background: none; }
 .th-fs { font-size: 17px; }
+.th-notes { font: 500 13px/1 "IBM Plex Sans", system-ui, sans-serif; padding: 0 12px; margin-right: 4px; border: 1px solid var(--th-line); }
+.th-notes[aria-pressed="true"] { background: var(--th-fg); color: var(--th-bg); border-color: var(--th-fg); }
 .th-count {
   min-width: 64px; text-align: center; color: var(--th-dim);
   font: 500 13px/1 "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums;
@@ -62,6 +80,17 @@ html.theater .deck-pager { display: none; }   /* the bar's counter replaces the 
   .th-bar { grid-template-columns: auto minmax(60px, 1fr) auto; gap: 10px; padding: 0 6px; }
   .th-title { display: none; }
   .th-count { min-width: 52px; }
+  .th-notes { padding: 0 8px; }
+}
+@media (max-width: 480px) {
+  .th-bar { grid-template-columns: auto minmax(32px, 1fr) auto; gap: 6px; padding: 0 4px; }
+  .th-home { font-size: 0; }                     /* keep the arrow, drop the word */
+  .th-home::before { font-size: 18px; content: "←"; }
+  .th-btn { min-width: 34px; padding: 0 4px; }
+  .th-notes { padding: 0 7px; margin-right: 2px; }
+  .th-count { min-width: 44px; font-size: 12px; }
+  .th-right { gap: 2px; }
+  .th-seg { min-width: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .th-bar, .th-seg::after { transition: none; }

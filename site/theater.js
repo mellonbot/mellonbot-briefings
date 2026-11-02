@@ -1,18 +1,66 @@
 // Theater: a visible shell around the deck's own player.
 //
-// The exported deck already runs a one-slide "stage" (builds, transitions, keys, click halves,
-// swipe, #N hashes). It exposes no API, so this file only *drives* it through the inputs it
-// already listens to (keydown on window, hashchange) and *reads* it through the DOM it already
-// writes (data-off on every slide but the current one). If a future export changes those, the
-// bar degrades to dead buttons; the deck itself keeps working.
-//
-// The build patches the deck so that (a) the stage is used on every aspect ratio, and (b) its
-// scale reserves --theater-bar px at the bottom for this bar. See tools/build.mjs PATCHES.
+// Exported decks bring their own player and expose no API. Each player gets an adapter that
+// *drives* it through the inputs it already listens to and *reads* its state from the DOM it
+// already writes. tools/build.mjs picks the player at build time (<html data-player>) and
+// applies that player's guarded patches (stage on every aspect ratio, room for this bar, and
+// for the simple player an exposed show()). If a re-export changes a player, the build fails.
 (function () {
   "use strict";
   var doc = document;
   var root = doc.documentElement;
-  var slides = Array.prototype.slice.call(doc.querySelectorAll(".deck-slide"));
+
+  function key(k) {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  }
+
+  var ADAPTERS = {
+    // Single-file deck exports with a #deck-motion timeline: builds, transitions, hash jumps.
+    motion: function () {
+      var slides = [].slice.call(doc.querySelectorAll(".deck-slide"));
+      return {
+        slides: slides,
+        current: function () {
+          for (var i = 0; i < slides.length; i++) if (!slides[i].hasAttribute("data-off")) return i;
+          return 0;
+        },
+        next: function () { key("ArrowRight"); },
+        prev: function () { key("ArrowLeft"); },
+        go: function (i) { window.location.hash = "#" + (i + 1); }, // player listens to hashchange
+        watch: { node: doc.querySelector("main") || doc.body, attr: "data-off" },
+        textOf: function (s) { return s.querySelectorAll(".deck-scaler *"); },
+        notes: null,
+      };
+    },
+    // Hand-built decks: #stage > section.slide, current slide has .on, <aside> holds speaker notes.
+    simple: function () {
+      var slides = [].slice.call(doc.querySelectorAll("#stage > .slide"));
+      var panel = doc.getElementById("notes");
+      var hasNotes = !!panel && slides.some(function (s) { return s.querySelector("aside"); });
+      return {
+        slides: slides,
+        current: function () {
+          for (var i = 0; i < slides.length; i++) if (slides[i].classList.contains("on")) return i;
+          return 0;
+        },
+        next: function () { key("ArrowRight"); },
+        prev: function () { key("ArrowLeft"); },
+        go: function (i) { if (typeof window.__deckShow === "function") window.__deckShow(i); },
+        watch: { node: doc.getElementById("stage"), attr: "class" },
+        textOf: function (s) { return s.querySelectorAll(":scope *:not(aside):not(aside *)"); },
+        notes: hasNotes ? {
+          toggle: function () { key("n"); },
+          open: function () { return panel.classList.contains("show"); },
+          panel: panel,
+        } : null,
+      };
+    },
+  };
+
+  var make = ADAPTERS[root.getAttribute("data-player")];
+  if (!make) return;
+  var deck = make();
+  var slides = deck.slides;
   var total = slides.length;
   if (!total) return;
 
@@ -25,7 +73,7 @@
     return e;
   }
   function button(cls, label, glyph) {
-    var b = el("button", "th-btn " + cls, glyph);
+    var b = el("button", cls, glyph);
     b.type = "button";
     b.setAttribute("aria-label", label);
     b.title = label;
@@ -40,24 +88,24 @@
   var left = el("div", "th-left");
   var home = el("a", "th-home", "Briefings");
   home.href = "/";
-  var title = el("span", "th-title", deckTitle);
-  left.append(home, title);
+  left.append(home, el("span", "th-title", deckTitle));
 
   var track = el("div", "th-track");
   var segs = slides.map(function (_, i) {
-    var s = button("", "Slide " + (i + 1), "");
-    s.className = "th-seg"; // not .th-btn: segments shrink to fit the track
+    var s = button("th-seg", "Slide " + (i + 1), ""); // not .th-btn: segments shrink to fit
     s.dataset.i = String(i);
     track.appendChild(s);
     return s;
   });
 
   var right = el("div", "th-right");
-  var prev = button("th-prev", "Previous (←)", "‹");
+  var notesBtn = deck.notes ? button("th-btn th-notes", "Speaker notes (N)", "Notes") : null;
+  var prev = button("th-btn th-prev", "Previous (←)", "‹");
   var count = el("span", "th-count", "1 / " + total);
   count.setAttribute("aria-live", "polite");
-  var next = button("th-next", "Next (→ or space)", "›");
-  var fs = button("th-fs", "Present full screen (F)", "⛶");
+  var next = button("th-btn th-next", "Next (→ or space)", "›");
+  var fs = button("th-btn th-fs", "Present full screen (F)", "⛶");
+  if (notesBtn) right.appendChild(notesBtn);
   right.append(prev, count, next);
   if (doc.fullscreenEnabled) right.appendChild(fs);
 
@@ -65,44 +113,35 @@
   doc.body.appendChild(bar);
   root.classList.add("theater");
 
-  // ---- drive the deck ------------------------------------------------------------------
-  function key(k) {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
-  }
-  function go(i) {
-    if (i === current()) return;
-    window.location.hash = "#" + (i + 1); // deck's hashchange handler jumps to the slide
-  }
   function toggleFullscreen() {
     if (doc.fullscreenElement) doc.exitFullscreen();
     else root.requestFullscreen().catch(function () {});
   }
 
-  // The deck treats any click on the page as "advance by half" and Space as "next": keep the
-  // bar's own clicks and key presses from reaching it, and drop focus so arrows go to the deck.
+  // Players treat any page click as "step by half" and Space/Enter as "next": keep the bar's
+  // own clicks and keys from reaching them, and drop focus so arrows go back to the deck.
   bar.addEventListener("click", function (e) {
     e.stopPropagation();
     var t = e.target.closest("button");
     if (!t) return;
-    if (t === prev) key("ArrowLeft");
-    else if (t === next) key("ArrowRight");
+    if (t === prev) deck.prev();
+    else if (t === next) deck.next();
     else if (t === fs) toggleFullscreen();
-    else if (t.dataset.i) go(Number(t.dataset.i));
+    else if (t === notesBtn) deck.notes.toggle();
+    else if (t.dataset.i) { var i = Number(t.dataset.i); if (i !== deck.current()) deck.go(i); }
     t.blur();
+    sync();
   });
   bar.addEventListener("keydown", function (e) {
     if (e.key === " " || e.key === "Enter") e.stopPropagation();
   });
   bar.addEventListener("wheel", function (e) { e.stopPropagation(); }, { passive: true });
 
-  // ---- read the deck -------------------------------------------------------------------
-  function current() {
-    for (var i = 0; i < total; i++) if (!slides[i].hasAttribute("data-off")) return i;
-    return 0;
-  }
+  // ---- read the player -------------------------------------------------------------------
   var shown = -1;
   function sync() {
-    var i = current();
+    if (notesBtn) notesBtn.setAttribute("aria-pressed", String(deck.notes.open()));
+    var i = deck.current();
     if (i === shown) return;
     shown = i;
     count.textContent = i + 1 + " / " + total;
@@ -113,15 +152,16 @@
       else segs[j].removeAttribute("aria-current");
     }
   }
-  new MutationObserver(sync).observe(doc.querySelector("main") || doc.body, {
-    subtree: true, attributes: true, attributeFilter: ["data-off"],
-  });
+  if (deck.watch.node) {
+    new MutationObserver(sync).observe(deck.watch.node, { subtree: true, attributes: true, attributeFilter: [deck.watch.attr] });
+  }
+  if (deck.notes) new MutationObserver(sync).observe(deck.notes.panel, { attributes: true, attributeFilter: ["class"] });
   sync();
 
   // Segment tooltips: each slide's largest line of text is its headline.
   function headline(slide) {
     var best = null, size = 0;
-    var nodes = slide.querySelectorAll(".deck-scaler *");
+    var nodes = deck.textOf(slide);
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i], own = "";
       for (var c = n.firstChild; c; c = c.nextSibling) if (c.nodeType === 3) own += c.nodeValue;
@@ -154,7 +194,7 @@
     fs.setAttribute("aria-label", on ? "Exit full screen (F or Esc)" : "Present full screen (F)");
     fs.title = fs.getAttribute("aria-label");
     wake();
-    // The deck rescales on resize; make sure it re-reads --theater-bar after the class flip.
+    // Players rescale on resize; make sure they re-read --theater-bar after the class flip.
     window.dispatchEvent(new Event("resize"));
   });
   ["mousemove", "pointerdown", "keydown", "touchstart"].forEach(function (t) {
