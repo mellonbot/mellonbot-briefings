@@ -33,3 +33,15 @@ test("every local reference resolves to a built file", () => {
 test("deck JS never writes style attributes (CSP blocks them)", () => {
   for (const f of files.filter((f) => f.endsWith(".js"))) assert.doesNotMatch(readFileSync(f, "utf8"), /setAttribute\("style"/, f);
 });
+
+test("every deck carries the theater and the patched player", () => {
+  for (const f of files.filter((f) => /\/[^/]+\/index\.html$/.test(f) && !f.endsWith("public/index.html"))) {
+    const html = readFileSync(f, "utf8");
+    assert.match(html, /<link rel="stylesheet" href="\/assets\/theater\.[0-9a-f]{10}\.css">/, `${f}: theater css`);
+    assert.match(html, /<script src="\/assets\/theater\.[0-9a-f]{10}\.js"><\/script>\n<\/body>/, `${f}: theater js last`);
+    const js = html.match(/<script src="(\/[^"]+\/deck\.[0-9a-f]{10}\.js)">/)[1];
+    const body = readFileSync(join(OUT, js), "utf8");
+    assert.match(body, /--theater-bar/, `${js}: scale patch`);
+    assert.doesNotMatch(body, /max-aspect-ratio: 1\/1/, `${js}: stage patch`);
+  }
+});

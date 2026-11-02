@@ -1,0 +1,69 @@
+/* Theater shell. Unlayered, so it wins over the deck's own CSS (which build.mjs puts in @layer deck). */
+:root {
+  --theater-bar: 56px;          /* read by the patched deck scaler: slide is fitted above this */
+  --th-fg: #e8eaec;
+  --th-dim: #8b9198;
+  --th-line: rgba(255, 255, 255, 0.14);
+  --th-accent: #e8442e;
+  --th-bg: #0a0d10;
+}
+:root.th-present { --theater-bar: 0px; }
+
+/* Stage: the deck centres each slide in <main>; stop <main> above the bar. */
+html.theater.deck-stage main { bottom: var(--theater-bar); }
+html.theater .deck-pager { display: none; }   /* the bar's counter replaces the flashing pill */
+
+.th-bar {
+  position: fixed; z-index: 10; left: 0; right: 0; bottom: 0;
+  height: 56px; box-sizing: border-box; padding: 0 12px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 2fr) auto; align-items: center; gap: 16px;
+  background: var(--th-bg); border-top: 1px solid var(--th-line); color: var(--th-fg);
+  font: 500 13px/1 "IBM Plex Sans", system-ui, sans-serif;
+  transition: opacity 0.25s, transform 0.25s;
+  user-select: none; -webkit-user-select: none;
+}
+.th-present .th-bar { background: rgba(10, 13, 16, 0.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.th-present.th-idle .th-bar { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.th-present.th-idle, .th-present.th-idle * { cursor: none; }
+
+.th-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.th-home { color: var(--th-dim); text-decoration: none; white-space: nowrap; }
+.th-home::before { content: "← "; }
+.th-home:hover, .th-home:focus-visible { color: var(--th-fg); }
+.th-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 12px; border-left: 1px solid var(--th-line); }
+
+.th-track { display: flex; gap: 3px; height: 28px; align-items: center; min-width: 0; overflow: hidden; }
+.th-seg {
+  flex: 1 1 0; min-width: 6px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; position: relative;
+}
+.th-seg::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px;
+  background: var(--th-line); transition: background 0.2s, top 0.15s, height 0.15s;
+}
+.th-seg.th-past::after { background: var(--th-dim); }
+.th-seg[aria-current]::after { background: var(--th-accent); }
+.th-seg:hover::after, .th-seg:focus-visible::after { top: 10px; height: 8px; }
+
+.th-right { display: flex; align-items: center; gap: 4px; }
+.th-btn {
+  min-width: 40px; height: 40px; padding: 0 8px; border: 0; border-radius: 8px;
+  background: none; color: var(--th-fg); font: 400 22px/1 "IBM Plex Sans", system-ui, sans-serif; cursor: pointer;
+}
+.th-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.th-btn:focus-visible, .th-seg:focus-visible, .th-home:focus-visible { outline: 2px solid var(--th-accent); outline-offset: 2px; }
+.th-btn:disabled { color: var(--th-dim); opacity: 0.4; cursor: default; background: none; }
+.th-fs { font-size: 17px; }
+.th-count {
+  min-width: 64px; text-align: center; color: var(--th-dim);
+  font: 500 13px/1 "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .th-bar { grid-template-columns: auto minmax(60px, 1fr) auto; gap: 10px; padding: 0 6px; }
+  .th-title { display: none; }
+  .th-count { min-width: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .th-bar, .th-seg::after { transition: none; }
+}
+@media print { .th-bar { display: none; } }

@@ -17,6 +17,10 @@
 //                            becomes style.cssText=v (CSSOM writes are allowed by CSP).
 //   meta CSP              -> removed (it would intersect with, and block, 'self').
 //
+// Theater (site/theater.{css,js}) is injected into every deck: a control bar around the deck's
+// own player. Two PATCHES make the player cooperate; each must match exactly once, so a
+// re-export that changes the player fails the build instead of shipping a half-working bar.
+//
 // New or updated deck: drop the export at decks/<slug>.html, run `npm run build`, commit.
 
 import { createHash } from "node:crypto";
@@ -30,6 +34,28 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">"
 const unesc = (s) =>
   s.replace(/&(quot|amp|lt|gt|apos|#39|#x27);/g, (_, e) => ({ quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", "#39": "'", "#x27": "'" })[e]);
 const fail = (msg) => { console.error(`build: ${msg}`); process.exit(1); };
+
+const PATCHES = [
+  {
+    why: "use the one-slide stage on every aspect ratio (export falls back to scrolling in portrait)",
+    re: /window\.matchMedia\("\(max-aspect-ratio: 1\/1\)"\)/g,
+    to: () => "null",
+  },
+  {
+    why: "fit slides above the theater bar: scale from viewport height minus --theater-bar",
+    re: /Math\.min\((\w+)\.clientWidth\/(\w+)\.w,\1\.clientHeight\/\2\.h\)/g,
+    to: (_, n, e) =>
+      `Math.min(${n}.clientWidth/${e}.w,(${n}.clientHeight-(parseFloat(getComputedStyle(${n}).getPropertyValue("--theater-bar"))||0))/${e}.h)`,
+  },
+];
+function patchPlayer(slug, js) {
+  for (const p of PATCHES) {
+    const hits = js.match(p.re)?.length ?? 0;
+    if (hits !== 1) fail(`${slug}: player patch matched ${hits}x (want 1): ${p.why}`);
+    js = js.replace(p.re, p.to);
+  }
+  return js;
+}
 
 function emit(rel, data) {
   const p = join(OUT, rel);
@@ -74,7 +100,7 @@ function buildFonts() {
 }
 
 // ---- one deck --------------------------------------------------------------------------
-function buildDeck(slug, fontsCss) {
+function buildDeck(slug, fontsCss, theater) {
   let html = readFileSync(join(ROOT, "decks", `${slug}.html`), "utf8");
   const title = unesc((html.match(/<title>([^<]*)<\/title>/) || fail(`${slug}: no <title>`))[1].trim());
 
@@ -117,14 +143,14 @@ function buildDeck(slug, fontsCss) {
   const attrCss = [...classes].sort(([a], [b]) => (a < b ? -1 : 1)).map(([c, d]) => `.${c}{${d}}`).join("\n");
   const cssUrl = hashed(slug, "deck", "css", `@layer deck{\n${deckCss}\n}\n${attrCss}\n`);
 
-  html = html.replace(/<\/title>/, `</title>\n<link rel="stylesheet" href="${fontsCss}">\n<link rel="stylesheet" href="${cssUrl}">`);
+  html = html.replace(/<\/title>/, `</title>\n<link rel="stylesheet" href="${fontsCss}">\n<link rel="stylesheet" href="${cssUrl}">\n<link rel="stylesheet" href="${theater.css}">`);
 
   // Unmask scripts: data blocks stay inline (never executed, so CSP doesn't apply); code moves out.
   html = html.replace(/\u0000S(\d+)\u0000/g, (_, i) => {
     const { attrs, body } = scripts[+i];
     if (/type="application\/(ld\+)?json"/.test(attrs)) return `<script${attrs}>${body}</script>`;
     if (/\ssrc=/.test(attrs)) fail(`${slug}: external <script src> not supported`);
-    const js = body.replace(/(\w+)\.setAttribute\("style",/g, "$1.style.cssText=(");
+    const js = patchPlayer(slug, body.replace(/(\w+)\.setAttribute\("style",/g, "$1.style.cssText=("));
     return `<script src="${hashed(slug, "deck", "js", js)}"></script>`;
   });
 
@@ -136,6 +162,8 @@ function buildDeck(slug, fontsCss) {
     [/(src|href)="(https?:)?\/\/(?!melltron\.build)/, "third-party resource"], [/javascript:/, "javascript: URL"],
   ]) if (re.test(stripped)) fail(`${slug}: ${what} survived conversion`);
 
+  if (!/<\/body>/.test(html)) fail(`${slug}: no </body> to attach the theater to`);
+  html = html.replace(/<\/body>/, `<script src="${theater.js}"></script>\n</body>`);
   emit(`${slug}/index.html`, html);
   return { slug, title, slides: (html.match(/class="[^"]*\bdeck-slide\b/g) || []).length };
 }
@@ -143,7 +171,11 @@ function buildDeck(slug, fontsCss) {
 // ---- site ------------------------------------------------------------------------------
 rmSync(OUT, { recursive: true, force: true });
 const fontsCss = buildFonts();
-const decks = readdirSync(join(ROOT, "decks")).filter((f) => f.endsWith(".html")).sort().map((f) => buildDeck(f.slice(0, -5), fontsCss));
+const theater = {
+  css: hashed("assets", "theater", "css", readFileSync(join(ROOT, "site", "theater.css"))),
+  js: hashed("assets", "theater", "js", readFileSync(join(ROOT, "site", "theater.js"))),
+};
+const decks = readdirSync(join(ROOT, "decks")).filter((f) => f.endsWith(".html")).sort().map((f) => buildDeck(f.slice(0, -5), fontsCss, theater));
 
 const appCss = hashed("assets", "app", "css", readFileSync(join(ROOT, "site", "app.css")));
 for (const page of ["index.html", "404.html"]) {
